@@ -1,21 +1,31 @@
 # Product Requirements Document (PRD)
+**Project Title:** Unified Digital Healthcare Management & Electronic Health Record (EHR) Platform  
 **Product Name:** HealthVault  
-**Tagline:** "One Patient. One Medical History."  
-**Document Status:** Draft (Architectural Focus)
+**Document Status:** Final (V2.0)
 
 ---
 
-## 1. Executive Summary
+## 1. Project Vision & Core Objective
 
-HealthVault is a unified healthcare record management ecosystem. It connects Patients, Doctors, Laboratories, Pharmacies, and Hospital Staff on a single secure platform. By providing a secure digital vault, HealthVault ensures that a patient's complete medical history is always accessible to authorized individuals, improving diagnosis accuracy and empowering families to manage their health records efficiently.
+**Vision:** Create a fully digital healthcare ecosystem connecting Patients, Doctors, Labs, Pathology Centers, Hospitals, and Medical Stores on one centralized platform. The goal is to eliminate physical files, paper prescriptions, lost reports, and manual hospital workflows.
 
-**Note:** HealthVault is a centralized health record management ecosystem, *not* a telemedicine or appointment booking platform.
+**Core Objective:** Every patient must have a Unique Digital Health Identity through which their complete medical history, prescriptions, reports, lab tests, medicines, treatments, and doctor interactions can be accessed securely.
 
 ---
 
-## 2. High-Level System Architecture
+## 2. Target Users & Roles (Module 11)
+The system strictly enforces Role-Based Access Control (RBAC) across:
+1. **Super Admin**: Platform-wide configuration.
+2. **Hospital Admin**: Manages hospital staff and resources.
+3. **Doctor**: Conducts consultations, prescribes, and reviews tests.
+4. **Pathology Staff (Lab)**: Uploads test results.
+5. **Pharmacy Staff (Medical Store)**: Dispenses medicines.
+6. **Receptionist**: Manages tokens and queues.
+7. **Patient**: Views history and shares access.
 
-The architecture relies on a monolithic backend (Spring Boot) with clear module boundaries, communicating with a modern SPA (React) frontend. It integrates an external OCR Engine for document text extraction and an S3-compatible object store for medical files.
+---
+
+## 3. High-Level Architecture (Updated)
 
 ```mermaid
 graph TD
@@ -24,6 +34,7 @@ graph TD
         DoctorUI[Doctor Portal]
         LabUI[Lab Portal]
         PharmacyUI[Pharmacy Portal]
+        ReceptionUI[Queue/Token Portal]
     end
 
     subgraph API_Gateway["API Layer (Spring Boot)"]
@@ -33,16 +44,16 @@ graph TD
 
     subgraph Business_Logic["Service Layer"]
         AuthSvc[Auth & Roles]
-        PatientSvc[Family & Profile]
-        DocSvc[Doctor & Access]
-        RecordSvc[Record Uploads]
-        RxSvc[Prescriptions]
+        EHRSvc[Electronic Health Records]
+        QueueSvc[Token & Queue System]
+        TxSvc[Treatment Tracking]
+        AISvc[AI Microservices]
     end
 
     subgraph External_Services["External integrations"]
-        OCR[Tesseract OCR Engine]
-        Storage[MinIO / AWS S3 File Storage]
-        Email[SMTP / SendGrid]
+        Storage[S3/MinIO File Storage]
+        Notification[SMS/WhatsApp/Email]
+        AI[OpenAI / Gemini API]
     end
 
     subgraph Data_Layer["Persistence"]
@@ -53,211 +64,125 @@ graph TD
     DoctorUI --> |HTTPS| Sec
     LabUI --> |HTTPS| Sec
     PharmacyUI --> |HTTPS| Sec
+    ReceptionUI --> |HTTPS| Sec
 
     Sec --> Gateway
     Gateway --> AuthSvc
-    Gateway --> PatientSvc
-    Gateway --> DocSvc
-    Gateway --> RecordSvc
-    Gateway --> RxSvc
+    Gateway --> EHRSvc
+    Gateway --> QueueSvc
+    Gateway --> TxSvc
+    Gateway --> AISvc
 
     AuthSvc --> DB
-    PatientSvc --> DB
-    DocSvc --> DB
-    RecordSvc --> DB
-    RxSvc --> DB
+    EHRSvc --> DB
+    QueueSvc --> DB
+    TxSvc --> DB
 
-    RecordSvc --> |Extract Text| OCR
-    RecordSvc --> |Save Files| Storage
-    AuthSvc --> |OTP/Welcome| Email
+    EHRSvc --> Storage
+    AISvc --> AI
+    Gateway --> Notification
 ```
 
 ---
 
-## 3. Database Schema (Entity-Relationship Diagram)
+## 4. Core Modules
 
-The data model isolates authentication (Users) from domain-specific profiles. Family members act as the anchor for medical records to allow one patient account to manage multiple people.
+### Module 1: Patient Digital Health ID
+*   **Unique Health ID:** Generated for every patient.
+*   **Profile Details:** ID, Full Name, Age, Gender, Blood Group, Mobile, Address, Emergency Contact, Allergies, Existing Diseases, Insurance, Photo.
+*   **Access Paradigm:** Visit any hospital using only Health ID, Mobile Number, or QR Code. No physical file required.
 
-```mermaid
-erDiagram
-    USERS {
-        Long id PK
-        String email UK
-        String phone UK
-        String password
-        String role
-        Boolean active
-    }
+### Module 2: Electronic Health Records (EHR)
+*   **Comprehensive Data:** Visit Date, Hospital, Doctor, Department, Symptoms, Diagnosis, Prescription, Lab Reports, Bills, Medicines, Follow-up Date.
+*   **Searchable Timeline:** Entire history viewable linearly (e.g., Cardiology Checkup -> Blood Test -> Medicines).
 
-    PATIENT_PROFILE {
-        Long id PK
-        Long user_id FK
-        String primary_healthvault_id UK
-        String full_name
-    }
+### Module 3: Doctor Portal
+*   **Search & Access:** Look up patient via ID/QR/Mobile. View past reports, prescriptions, and history.
+*   **Single-Action Workflow:** "Generate & Share" to upload prescriptions/notes and instantly route them to the Lab, Pharmacy, and Patient simultaneously.
 
-    FAMILY_MEMBER {
-        Long id PK
-        Long patient_profile_id FK
-        String healthvault_id UK
-        String relation "Self, Mother, Father"
-        String blood_group
-        Date dob
-    }
+### Module 4: Lab/Pathology Management
+*   **Automated Routing:** Doctor Request -> Lab Queue -> Sample Collection -> Report Generated -> Patient Record Updated -> Doctor Notified.
+*   **Uploads:** Supports PDFs, Images, and Remarks.
 
-    DOCTOR_PROFILE {
-        Long id PK
-        Long user_id FK
-        String license_number
-        String specialization
-        String clinic_name
-    }
+### Module 5: Digital Prescription System
+*   **Standardized Format:** Doctor Info (Reg Number), Patient Info, Date, Medicines, Dosage, Duration, Instructions.
+*   **Security:** Digital Signatures enforced.
 
-    MEDICAL_RECORD {
-        Long id PK
-        Long member_id FK
-        String category "Blood, XRay"
-        Date record_date
-        String file_url
-        Long uploaded_by FK "Doctor/Lab"
-    }
+### Module 6: Medical Store Integration
+*   **Live Queue:** Pharmacy sees incoming prescriptions instantly (e.g., `#1012 Rahul Sharma (Dr. Verma)`).
+*   **Dispensation:** Store staff marks medicine as delivered, generates bill, and updates patient history automatically.
 
-    ACCESS_GRANT {
-        Long id PK
-        Long member_id FK
-        Long doctor_id FK
-        Date expires_at
-        String status "ACTIVE, REVOKED"
-    }
+### Module 7: Digital Token & Queue System
+*   **Hospital Slips Replaced:** Digital token generated upon arrival.
+*   **Status Tracking:** Waiting -> In Consultation -> Lab Testing -> Pharmacy Queue -> Completed.
+*   **Live Dashboard:** Displayed on hospital monitors and reception UI.
 
-    PRESCRIPTION {
-        Long id PK
-        Long member_id FK
-        Long doctor_id FK
-        Date prescribed_date
-        String notes
-    }
+### Module 8: Treatment Tracking
+*   **Lifecycle Management:** Start Date, End Date, Duration. 
+*   *Example:* Fracture Treatment (60 Days). Allows doctor to review longitudinal progress.
 
-    OCR_METADATA {
-        Long id PK
-        Long record_id FK
-        String extracted_text
-        Jsonb key_value_pairs
-    }
+### Module 9: Patient Timeline
+*   **Chronological Journey:** Seamless merging of Consultations, Tests ordered, Reports uploaded, and Medicines purchased into a single feed.
 
-    USERS ||--o| PATIENT_PROFILE : "has"
-    USERS ||--o| DOCTOR_PROFILE : "has"
-    PATIENT_PROFILE ||--|{ FAMILY_MEMBER : "manages"
-    FAMILY_MEMBER ||--o{ MEDICAL_RECORD : "owns"
-    FAMILY_MEMBER ||--o{ PRESCRIPTION : "receives"
-    FAMILY_MEMBER ||--o{ ACCESS_GRANT : "grants_access_for"
-    DOCTOR_PROFILE ||--o{ ACCESS_GRANT : "receives_access"
-    MEDICAL_RECORD ||--o| OCR_METADATA : "analyzed_into"
-    DOCTOR_PROFILE ||--o{ PRESCRIPTION : "writes"
-```
+### Module 10: Notification System
+*   **Channels:** SMS, Email, WhatsApp.
+*   **Triggers:** Appointment Reminders, Report Ready, Medicine Ready, Follow-Up Reminders, Prescription Shared.
+
+### Module 12: Security
+*   **Audit Logging:** Every action is timestamped and logged (e.g., `Doctor opened report Time: 10:25 AM`).
+*   **HIPAA-Style Design:** E2E Encryption, strict access tracking, secure file storage.
 
 ---
 
-## 4. Core Workflows (Sequence Diagrams)
-
-### 4.1 Doctor Access Grant Flow
-This sequence demonstrates how a patient grants a doctor access to their family member's records.
+## 5. Workflow: The Unified Hospital Visit (Sequence)
 
 ```mermaid
 sequenceDiagram
     actor Patient
-    participant Frontend
-    participant API
-    participant AccessService
-    participant DB
-    actor Doctor
+    participant Reception
+    participant Doctor
+    participant Lab
+    participant Pharmacy
+    participant System
 
-    Patient->>Frontend: Select Family Member & Doctor ID
-    Patient->>Frontend: Set Duration (e.g., 30 Days) & Click "Grant"
-    Frontend->>API: POST /api/access/grant (MemberID, DoctorID, Duration)
-    API->>AccessService: validateGrantRequest()
-    AccessService->>DB: Check existing active grants
-    AccessService->>DB: Create new AccessGrant Record
-    AccessService->>API: return Success
-    API->>Frontend: display "Access Granted"
+    Patient->>Reception: Provides Health ID
+    Reception->>System: Generates Digital Token
+    System-->>Patient: SMS Token & Waiting Status
     
-    AccessService-->>Doctor: Trigger Notification (Email/In-App)
+    Doctor->>System: Calls Next Token
+    System->>Doctor: Displays Patient EHR
+    Doctor->>System: "Generate & Share" Prescription + Lab Request
     
-    Doctor->>Frontend: Login & View Assigned Patients
-    Frontend->>API: GET /api/doctors/patients
-    API->>DB: Query Active Grants for DoctorID
-    DB-->>API: Return granted Patient Details
-    API-->>Frontend: Display Patient in Doctor's List
-```
-
-### 4.2 Medical Record Upload & OCR Extraction Flow
-This sequence shows the asynchronous background processing of a medical report upload.
-
-```mermaid
-sequenceDiagram
-    actor Lab_or_Doctor
-    participant API
-    participant FileStorage
-    participant DB
-    participant OCR_Queue
-    participant OCR_Engine
-
-    Lab_or_Doctor->>API: POST /api/records/upload (PDF, PatientID)
-    API->>FileStorage: saveFile(PDF)
-    FileStorage-->>API: return file_url
-    API->>DB: insert MedicalRecord(file_url, status='PROCESSING')
-    API->>OCR_Queue: push(record_id, file_url)
-    API-->>Lab_or_Doctor: HTTP 202 Accepted (Upload Success)
-
-    OCR_Queue->>OCR_Engine: pull task
-    OCR_Engine->>FileStorage: fetch PDF
-    OCR_Engine->>OCR_Engine: Extract Text (Tesseract)
-    OCR_Engine->>OCR_Engine: Parse Key-Value (e.g., Glucose: 90)
-    OCR_Engine->>DB: insert OCR_METADATA
-    OCR_Engine->>DB: update MedicalRecord(status='COMPLETED')
+    System-->>Lab: Adds to Lab Queue
+    System-->>Pharmacy: Adds to Pharmacy Queue
+    
+    Patient->>Lab: Gives Sample
+    Lab->>System: Uploads Report
+    System-->>Doctor: Notification (Report Ready)
+    
+    Patient->>Pharmacy: Collects Medicine
+    Pharmacy->>System: Marks Dispensed & Bills
+    System->>System: Updates Patient Timeline
 ```
 
 ---
 
-## 5. Module Specific Requirements
+## 6. Advanced AI Features (V2/V3)
+1. **AI Disease Summary:** Summarizes long medical histories.
+2. **AI Prescription Reader:** OCR for legacy handwritten notes.
+3. **AI Medical Report Analyzer:** Flags abnormal lab values.
+4. **Drug Interaction Checker:** Warns doctor if prescribed medicines conflict.
+5. **Follow-Up Prediction & Refill Reminders.**
+6. **Voice-to-Prescription:** Doctor dictates, AI structures it.
+7. **AI Health Assistant Chatbot.**
 
-### Module 1: Family Health Profiles
-*   **Hierarchical Management:** The primary account holder registers using Email/Phone. They then create `Family Member` profiles.
-*   **HealthVault ID Assignment:** Every member is assigned a system-generated ID (e.g., `HV-938210`). This ID is the primary key for sharing data.
+## 7. Future Scope
+* Telemedicine & Video Consultation.
+* Wearable Device Integration (Smartwatches).
+* National Health ID Integration (e.g., ABHA in India).
+* QR Based Emergency Access for paramedics.
 
-### Module 2: Access Management (The Vault)
-*   **Default State:** All records are private. Doctors, Labs, and Pharmacies cannot search for or view a patient's history without an explicit `ACCESS_GRANT`.
-*   **Time-To-Live (TTL):** Access grants must have an expiration timestamp. A scheduled cron job will mark expired grants as `EXPIRED`, instantly revoking access.
-
-### Module 3: OCR & Smart Search
-*   **Ingestion:** When a PDF/Image is uploaded, it is queued for OCR processing.
-*   **Searchability:** Patients and authorized doctors can use a global search bar. The backend performs a full-text search across `OCR_METADATA.extracted_text`, `PRESCRIPTION.notes`, and `MEDICAL_RECORD.category`.
-
-### Module 4: Medical Timeline Builder
-*   **Data Aggregation:** The timeline API fetches data from `MEDICAL_RECORD`, `PRESCRIPTION`, and `PHARMACY_RECORDS` sorting them chronologically descending.
-*   **UI Representation:** Visual nodes connected by a line, color-coded by category (e.g., Red for Blood Test, Green for Prescription).
-
----
-
-## 6. Dashboard Layouts (Wireframe Concepts)
-
-### Patient Dashboard
-1.  **Header:** Welcome message, active profile selector (Self, Mother, Father).
-2.  **Top Cards:** "Total Records", "Active Doctors", "Recent Uploads".
-3.  **Main View (Timeline):** Chronological feed of medical events.
-4.  **Sidebar:** Navigation (My Records, Share Access, Prescriptions, Settings).
-
-### Doctor Dashboard
-1.  **Header:** Doctor Profile, Clinic Name.
-2.  **Search Bar:** Global search for "HealthVault ID".
-3.  **Main View (Assigned Patients):** List of patients who have granted active access, with a countdown timer showing days left for access.
-4.  **Quick Actions:** "Upload Prescription", "Add Clinical Note".
-
----
-
-## 7. Security & Compliance Guardrails
-
-1.  **No Telemedicine:** Do not build video calls or chat features.
-2.  **No Booking System:** Do not build doctor availability calendars or appointment slots.
-3.  **Strict RBAC:** API Gateway must strictly intercept and validate roles. A Doctor ID requesting a Patient ID's record must be verified against the `ACCESS_GRANT` table on every single request.
-4.  **Audit Logs:** Every read/write operation on a Medical Record must insert a row into an `AUDIT_LOG` table containing Timestamp, UserID, IP Address, and Action.
+## 8. Success Criteria
+* **No Physical Paper:** Patients never need to carry physical reports or files.
+* **Instant Secure Access:** Authorized doctors access complete history instantly.
+* **Permanent Linkage:** Every interaction (bill, test, pill) is permanently linked to the patient's digital timeline.

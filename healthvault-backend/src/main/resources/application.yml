@@ -11,7 +11,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/healthvault
     username: postgres
-    password: password # Replace in application-local.yml
+    password: Neet2006@ # Replace in application-local.yml
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -22,7 +22,7 @@ spring:
         format_sql: true
 
 server:
-  port: 8080
+  port: 8081
 
 jwt:
   secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
